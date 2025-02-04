@@ -42,6 +42,7 @@ my $color_actual = "";
 
 my $opt_text        = 1;
 my $opt_html        = 0;
+my $opt_json        = 0;
 my $opt_color       = 0;
 my $opt_print_bits  = 1;
 my $opt_print_only_class = 0;
@@ -214,6 +215,11 @@ EOF
       ipcalc6($address,$address2,$mask1,$mask2);
       exit;
    }  
+   $network = $address & $mask1;
+   if ($opt_json) {
+     printjson($address, $network, $mask1, $mask2);
+     exit;
+   }
    html('<table border="0" cellspacing="0" cellpadding="0">');
    html("\n");
    printline ("Address",   $address ,$mask1,$mask1,1);
@@ -226,7 +232,6 @@ EOF
    html("</tr>\n");
    print "\n";
    
-   $network = $address & $mask1;
    printnet($network,$mask1,$mask1);
    html("</table>\n");
    if ($opt_deaggregate) {
@@ -477,6 +482,61 @@ sub get_description
 #$rfc3021 = "<a href=\"http://www.ietf.org/rfc/rfc3021.txt\">Point-to-Point
 #Link</a>";
    return join ", ",@description;
+}
+
+sub ntoa_bin {
+   my ($address,$mask1) = @_;
+   my $bit;
+   my $line = "";
+   for (my $i=1;$i<33;$i++)
+   {
+      $bit = 0;
+      if (($address & (1 << 32-$i)) == (1 << 32-$i)) {
+         $bit = 1;
+      }
+      if ($i % 8 == 0 && $i < 32) {
+         $line .= '.';
+      }
+      if ($i == $mask1) {
+         $line .= " "; 
+      }
+      $line .= $bit;
+   }
+   return $line;
+}
+
+sub convert_to_json {
+   my ($address, $network, $mask1, $mask2) = @_;
+   $mask1 = ntobitcountmask($mask1);
+   my $json = "{\"decimal\": {";
+   $json .= "\"Address\": \"" . ntoa($address) . "\",";
+   $json .= "\"Netmask\": \"" . ntoa($mask1) . "\",";
+   $json .= "\"Netmask_min\": \"" . ntobitcountmask($mask1) . "\",";
+   $json .= "\"Wildcard\": \"" . ntoa(~$mask1 & 4294967295) . "\",";
+   $json .= "\"Network\": \"" . ntoa($network) . "/" . ntobitcountmask($mask1) . "\",";
+   $json .= "\"HostMin\": \"" . ntoa($network + 1) . "\",";
+   $json .= "\"HostMax\": \"" . ntoa(($network | ((~$mask1) & 4294967295)) - 1) . "\",";
+   $json .= "\"Broadcast\": \"" . ntoa($network | ((~$mask1) & 4294967295)) . "\",";
+   $json .= "\"Hosts/Net\": \"" . get_description($network,$mask1) . "\"}";
+   if ($opt_print_bits)
+   {
+      $json .= ",\"binary\": {";
+      $json .= "\"Address\": \"" . ntoa_bin($address,$mask1) . "\",";
+      $json .= "\"Netmask\": \"" . ntoa_bin($mask1,$mask1) . "\",";
+      $json .= "\"Wildcard\": \"" . ntoa_bin(~$mask1 & 4294967295,$mask1) . "\",";
+      $json .= "\"Network\": \"" . ntoa_bin($network,$mask1) . "\",";
+      $json .= "\"HostMin\": \"" . ntoa_bin($network + 1,$mask1) . "\",";
+      $json .= "\"HostMax\": \"" . ntoa_bin(($network | ((~$mask1) & 4294967295)) - 1,$mask1) . "\",";
+      $json .= "\"Broadcast\": \"" . ntoa_bin($network | ((~$mask1) & 4294967295),$mask1) . "\",";
+      $json .= "\"Hosts/Net\": \"" . get_description($network,$mask1) . "\"}";
+   }
+   $json .= "}";
+   return $json;
+}
+
+sub printjson {
+    my ($address, $network, $mask1, $mask2) = @_;
+    print convert_to_json($address, $network, $mask1, $mask2), "\n";
 }
 
 sub printline
@@ -814,6 +874,11 @@ sub getopts
         if    ($opt eq 'h' || $opt eq 'html') {
 	   $opt_html = 1;
            $opt_text = 0;
+	}
+        if    ($opt eq 'j' || $opt eq 'json') {
+	   $opt_json = 1;
+           $opt_text = 0;
+           $opt_html = 0;
 	}
         elsif    ($opt eq 'help') {
 	   $opt_help = 1;
